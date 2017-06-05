@@ -11,16 +11,14 @@ local function is_authorized()
     ngx.log(ngx.ERR, "Checking authorization of " .. login .. " with token " .. token)
 
     if login == '' or token == '' then
-        ngx.log(ngx.ERR, "Missing auth cookies")
+        ngx.log(ngx.DEBUG, "Missing auth cookies")
         return false
     end
 
     for name in blacklist do
         if login == name then
             ngx.log(ngx.ERR, "Blocking blacklisted user " .. login)
-            ngx.header['Content-type'] = 'text/html'
-            ngx.status = ngx.HTTP_FORBIDDEN
-            ngx.say("Access is not allowed. If you believe this message is in error, please contact devops.")
+            return ngx.exit(ngx.HTTP_FORBIDDEN)
         end
     end
 

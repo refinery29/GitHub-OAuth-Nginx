@@ -35,14 +35,14 @@ local function handle_subrequest_error(response)
 end
 
 local function request_access_token(code)
-    ngx.log(ngx.ERR, 'Requesting access token with code ' .. code)
+    ngx.log(ngx.INFO, 'Requesting access token with code ' .. code)
     local res = ngx.location.capture(
         access_token_uri,
         { method=ngx.HTTP_POST
         , args={ client_id=client_id
-                 , client_secret=client_secret
-                 , code=code
-                 }})
+               , client_secret=client_secret
+               , code=code
+               }})
     err = handle_subrequest_error(res)
     if err then
         ngx.log(ngx.ERR, "Got error during access token request: " .. err)
@@ -51,14 +51,14 @@ local function request_access_token(code)
         ngx.say("Got error during access token request: " .. err)
         return ngx.exit(ngx.HTTP_FORBIDDEN)
     else
-        ngx.log(ngx.ERR, "Decoded access token request: " .. res.body)
+        ngx.log(ngx.DEBUG, "Decoded access token request: " .. res.body)
         return ngx.decode_args(res.body)
     end
 end
 
 local function provider_api_request(api_uri, token)
     local api_request_uri = proxy_api_uri .. api_uri
-    ngx.log(ngx.ERR, 'Making subrequest to ' .. api_request_uri .. " with token " .. token)
+    ngx.log(ngx.INFO, 'Making subrequest to ' .. api_request_uri .. " with token " .. token)
 
     ngx.req.set_header('Authorization', "token " .. token)
     local api_response = ngx.location.capture(api_request_uri)
@@ -71,8 +71,12 @@ local function provider_api_request(api_uri, token)
         return ngx.exit(ngx.HTTP_FORBIDDEN)
     else
         local stream = zlib.inflate()
-        local inflated_body = stream(api_response.body)
-        ngx.log(ngx.ERR, 'api response body: ' .. inflated_body)
+        local status, inflated_body = pcall(stream, api_response.body)
+        if not status then
+          ngx.log(ngx.ERR, 'Failed to inflate response from ' .. api_request_uri .. " with token " .. token)
+          inflated_body = api_response.body
+        end
+        ngx.log(ngx.DEBUG, 'api response body: ' .. inflated_body)
         local decoded_body = json.decode(inflated_body)
         return decoded_body
     end
@@ -82,7 +86,7 @@ local function validate_orgs(access_token)
     local orgs = provider_api_request('user/orgs', access_token)
     for _, org in pairs(orgs) do
         if org["login"] == valid_org then
-            ngx.log(ngx.ERR, "User " .. login .. " is in an authorized org")
+            ngx.log(ngx.INFO, "User " .. login .. " is in an authorized org")
             return true
         end
     end
@@ -93,13 +97,10 @@ end
 local function validate(access_token)
     if not access_token or access_token == '' then
         ngx.log(ngx.ERR, "No access token")
-        ngx.header['Content-type'] = 'text/html'
-        ngx.status = ngx.HTTP_FORBIDDEN
-        ngx.say("No access token")
         return ngx.exit(ngx.HTTP_FORBIDDEN)
     end
 
-    ngx.log(ngx.ERR, "Validating access token")
+    ngx.log(ngx.DEBUG, "Validating access token" .. access_token)
 
     local profile = provider_api_request('user', access_token)
     login = profile["login"]
@@ -107,9 +108,6 @@ local function validate(access_token)
     for name in blacklist do
         if login == name then
             ngx.log(ngx.ERR, "Blocking blacklisted user " .. login)
-            ngx.header['Content-type'] = 'text/html'
-            ngx.status = ngx.HTTP_FORBIDDEN
-            ngx.say("Access is not allowed. If you believe this message is in error, please contact devops.")
             return ngx.exit(ngx.HTTP_FORBIDDEN)
         end
     end
@@ -133,9 +131,6 @@ local function authorize()
 
     if not uri_args["code"] then
         ngx.log(ngx.ERR, "Invalid request: no code for authorization")
-        ngx.header['Content-type'] = 'text/html'
-        ngx.status = ngx.HTTP_FORBIDDEN
-        ngx.say("Invalid request: no code for authorization")
         return ngx.exit(ngx.HTTP_FORBIDDEN)
     end
 
@@ -146,25 +141,22 @@ local function authorize()
 
     if not token then
         ngx.log(ngx.ERR, "Failed to authenticate request")
-        ngx.header['Content-type'] = 'text/html'
-        ngx.status = ngx.HTTP_FORBIDDEN
-        ngx.say("Failed to authenticate request")
         return ngx.exit(ngx.HTTP_FORBIDDEN)
     end
 
-    local expiry = "; Max-Age=" .. (ngx.time() + 60*60)
+    local expiry = "; Max-Age=" .. (60)
     local cookies = {
       "OAuthLogin=" .. ngx.escape_uri(login) .. cookie_tail .. expiry,
       "OAuthAccessToken=" .. ngx.escape_uri(token) .. cookie_tail .. expiry,
     }
 
     for index, cookie in pairs(cookies) do
-      ngx.log(ngx.ERR, "Setting cookie " .. cookie .. " " .. index)
+      ngx.log(ngx.DEBUG, "Setting cookie " .. cookie .. " " .. index)
     end
 
     ngx.header["Set-Cookie"] = cookies
     local redirect = uri_args['target_uri'] or '/'
-    ngx.log(ngx.ERR, "Redirecting to " .. redirect)
+    ngx.log(ngx.DEBUG, "Redirecting to " .. redirect)
     return ngx.redirect(redirect)
 end
 
