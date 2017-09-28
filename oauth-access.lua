@@ -46,6 +46,12 @@ local function redirect_to_login(target_uri)
     ngx.redirect(login_uri_with_args)
 end
 
-if not is_authorized() then
-    redirect_to_login(target_url())
+_M = {}
+
+local function validate()
+    if not is_authorized() then
+        redirect_to_login(target_url())
+    end
 end
+_M.validate = validate
+return _M
