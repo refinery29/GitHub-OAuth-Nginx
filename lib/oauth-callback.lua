@@ -148,15 +148,13 @@ local function authorize()
         return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
     end
 
--- local cookie_tail = "; Domain=" .. domain .. '; HttpOnly; Path=/'
-
     local ok, err = cookie:set({
         key = "OAuthLogin",
         value = ngx.escape_uri(login),
         path = "/",
         domain = domain,
         httponly = true,
-        max+age = 60
+        max_age = 60
     })
 
     if not ok then
@@ -170,7 +168,7 @@ local function authorize()
         path = "/",
         domain = domain,
         httponly = true,
-        max+age = 60
+        max_age = 60
     })
 
     if not ok then
