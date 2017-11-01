@@ -1,5 +1,6 @@
 local json = require("cjson")
 local zlib = require("zlib")
+local resty_cookie = require("resty.cookie")
 
 local uri_args = ngx.req.get_uri_args()
 
@@ -18,9 +19,6 @@ local blacklist_string = oauth_blacklist or ngx.var.oauth_blacklist or ''
 local blacklist = string.gmatch(blacklist_string, "%S+")
 
 local domain = oauth_domain or ngx.var.oauth_domain or ngx.var.host
-
-local cookie_tail = "; Domain=" .. domain .. '; HttpOnly; Path=/'
-
 
 local function handle_subrequest_error(response)
     if not response then
@@ -144,17 +142,40 @@ local function authorize()
         return ngx.exit(ngx.HTTP_FORBIDDEN)
     end
 
-    local expiry = "; Max-Age=" .. (60)
-    local cookies = {
-      "OAuthLogin=" .. ngx.escape_uri(login) .. cookie_tail .. expiry,
-      "OAuthAccessToken=" .. ngx.escape_uri(token) .. cookie_tail .. expiry,
-    }
-
-    for index, cookie in pairs(cookies) do
-      ngx.log(ngx.DEBUG, "Setting cookie " .. cookie .. " " .. index)
+    local cookie, err = resty_cookie:new()
+    if not cookie then
+        ngx.log(ngx.ERR, err)
+        return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
     end
 
-    ngx.header["Set-Cookie"] = cookies
+    local ok, err = cookie:set({
+        key = "OAuthLogin",
+        value = ngx.escape_uri(login),
+        path = "/",
+        domain = domain,
+        httponly = true,
+        max_age = 60
+    })
+
+    if not ok then
+        ngx.log(ngx.ERR, err)
+        return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
+    end
+
+    local ok, err = cookie:set({
+        key = "OAuthAccessToken",
+        value = ngx.escape_uri(token),
+        path = "/",
+        domain = domain,
+        httponly = true,
+        max_age = 60
+    })
+
+    if not ok then
+        ngx.log(ngx.ERR, err)
+        return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
+    end
+
     local redirect = uri_args['target_uri'] or '/'
     ngx.log(ngx.DEBUG, "Redirecting to " .. redirect)
     return ngx.redirect(redirect)
