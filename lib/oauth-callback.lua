@@ -19,6 +19,7 @@ local blacklist_string = oauth_blacklist or ngx.var.oauth_blacklist or ''
 local blacklist = string.gmatch(blacklist_string, "%S+")
 
 local domain = oauth_domain or ngx.var.oauth_domain or ngx.var.host
+local max_age = oauth_max_age or ngx.var.oauth_max_age or 3600
 
 local function handle_subrequest_error(response)
     if not response then
@@ -154,7 +155,7 @@ local function authorize()
         path = "/",
         domain = domain,
         httponly = true,
-        max_age = 60
+        max_age = max_age
     })
 
     if not ok then
@@ -168,7 +169,7 @@ local function authorize()
         path = "/",
         domain = domain,
         httponly = true,
-        max_age = 60
+        max_age = max_age
     })
 
     if not ok then
